@@ -1,4 +1,5 @@
 import os
+import uuid
 from dotenv import load_dotenv
 import cloudinary
 import cloudinary.uploader
@@ -23,7 +24,15 @@ cloudinary.config(
 )
 
 # Загрузка изображения
-def upload_image(image_url, public_id):
-    upload_result = cloudinary.uploader.upload(image_url, public_id=public_id)
-    return upload_result["secure_url"]
+def upload_image(image_url, public_id=None):
+    if not public_id:
+        public_id = str(uuid.uuid4())  # Генерируем уникальный ID
+    try:
+        upload_result = cloudinary.uploader.upload(image_url, public_id=public_id)
+        return upload_result["secure_url"]
+    except Exception as e:
+        print(f"❌ Ошибка загрузки изображения: {e}")
+        raise ValueError("Ошибка при загрузке изображения.")
+
+
 
