@@ -1,5 +1,5 @@
 import os
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 from datetime import timedelta, datetime
 from jose import JWTError, jwt
@@ -9,16 +9,20 @@ from ..database import get_db
 from ..models import User
 from ..schemas import UserCreate, Token, UserResponse
 from ..utils import send_verification_email
+from ..cloudinary_utils import upload_avatar
+
 
 router = APIRouter()
 
 # Секретный ключ
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 if not SECRET_KEY:
-    raise ValueError("❌ JWT_SECRET_KEY не задан в .env")
+    raise ValueError("JWT_SECRET_KEY не задан в .env")
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
     try:
@@ -36,8 +40,6 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 # Настройки паролей
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 # Хеширование паролей
 def get_password_hash(password: str):
@@ -75,32 +77,20 @@ def verify_email(token: str, db: Session = Depends(get_db)):
     except JWTError:
         raise HTTPException(status_code=400, detail="Invalid token")
 
+@router.post("/upload-avatar")
+def upload_user_avatar(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Загружает аватар пользователя"""
+    try:
+        avatar_url = upload_avatar(file.file, public_id=current_user.email)
 
-@router.post("/register", response_model=UserResponse)
-def register(user_data: UserCreate, db: Session = Depends(get_db)):
-    existing_user = db.query(User).filter(User.email == user_data.email).first()
-    if existing_user:
-        raise HTTPException(status_code=409, detail="User already exists")
-    
-    hashed_password = get_password_hash(user_data.password)
-    new_user = User(email=user_data.email, hashed_password=hashed_password)
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    
+        current_user.avatar_url = avatar_url
+        db.commit()
+        db.refresh(current_user)
 
-    verification_token = create_access_token({"sub": new_user.email})
-    send_verification_email(new_user.email, verification_token)
-    
-    return new_user
-
-@router.post("/login", response_model=Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == form_data.username).first()
-    if not user or not verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    if not user.is_verified:
-        raise HTTPException(status_code=403, detail="Email not verified")
-    
-    access_token = create_access_token({"sub": user.email})
-    return {"access_token": access_token, "token_type": "bearer"}
+        return {"avatar_url": avatar_url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка загрузки аватара: {str(e)}")

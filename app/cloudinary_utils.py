@@ -24,11 +24,11 @@ cloudinary.config(
 )
 
 # Загрузка изображения
-def upload_image(image_url, public_id=None):
+def upload_avatar(image_file, public_id=None):
     if not public_id:
         public_id = str(uuid.uuid4())  # Генерируем уникальный ID
     try:
-        upload_result = cloudinary.uploader.upload(image_url, public_id=public_id)
+        upload_result = cloudinary.uploader.upload(image_file, public_id=f"avatars/{public_id}", overwrite=True)
         return upload_result["secure_url"]
     except Exception as e:
         print(f"❌ Ошибка загрузки изображения: {e}")
